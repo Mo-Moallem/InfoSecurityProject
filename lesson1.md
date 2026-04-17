@@ -154,29 +154,6 @@ Since this role often has broad permissions, list other functions in the account
 aws lambda list-functions --region us-east-1 --query 'Functions[].FunctionName'
 ```
 
------
-
-## 🛡️ Remediation
-
-The root cause is the use of `node-serialize` on untrusted user input.
-
-### Vulnerable Code (`order-manager.js`)
-
-```javascript
-const serialize = require('node-serialize');
-var req = serialize.unserialize(event.body); // DANGEROUS
-```
-
-### Secure Fix
-
-Replace the library with standard, safe JSON parsing:
-
-```javascript
-// Remove node-serialize
-var req = JSON.parse(event.body); // SAFE
-```
-
------
 
 ## 📝 Summary Checklist
 
