@@ -180,7 +180,7 @@ var req = JSON.parse(event.body); // SAFE
 
 ## 📝 Summary Checklist
 
-  - [x] Obtained Cognito Token.
+  - [ ] Obtained Cognito Token.
   - [ ] Intercepted `POST /order` in Burp.
   - [ ] Injected `_$$ND_FUNC$$_` payload.
   - [ ] Decoded `process.env` in CyberChef.
