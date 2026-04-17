@@ -69,15 +69,3 @@ Observe the **Response** pane in Burp Suite.
 
 * **Success:** If the response contains order details (Order ID, Date, Total) for User C, the vulnerability is confirmed.
 * **The Flaw:** The server is trusting the `sub` and `username` claims provided by the client without properly verifying the JWT signature against a secret key.
-
----
-
-## 🛡️ Remediation Strategies
-
-To fix this vulnerability, the following software architecture principles should be applied:
-
-* **Signature Verification:** The backend **must** verify the JWT signature using a secure, server-side secret key or public key (RS256). If the signature doesn't match the payload, the request must be rejected.
-* **Strict Access Control:** Never rely solely on client-side identifiers. The server should cross-reference the authenticated user's identity (validated via the token) with the requested resource.
-* **Use Standard Libraries:** Avoid manual Base64 manipulation for auth logic; use established libraries (like `jsonwebtoken` for Node.js or `System.IdentityModel.Tokens.Jwt` for .NET) that handle validation automatically.
-
-Would you like to explore how to implement a secure JWT validation middleware in a specific language?
