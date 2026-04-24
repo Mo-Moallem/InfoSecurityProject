@@ -1,31 +1,8 @@
 # Security Analysis: Logic Vulnerability (Race Condition) in DVSA
 
-## Project Overview
-**Course:** ICS-344: Information Security  
-**Institution:** King Fahd University of Petroleum and Minerals (KFUPM)  
-**Target Application:** Damn Vulnerable Serverless Application (DVSA)  
-**Vulnerability Focus:** Lesson #8 - Logic Vulnerabilities (Race Conditions) targeting the Order-Processing workflow.
 
 This repository documents the identification and remediation of a business logic flaw in the DVSA order management system. The vulnerability allows an attacker to exploit a race condition between payment initiation and order finalization, resulting in the acquisition of multiple items for the price of one.
 
----
-
-## Repository Structure
-A clean organization is maintained to ensure all artifacts are easily accessible for review and replication:
-
-```text
-├── src/
-│   ├── order_shipping_vulnerable.py # Original Lambda code with the logic flaw
-│   └── order_shipping_patched.py    # Remediated code with atomic operations
-├── config/
-│   └── iam_policies.json            # Required IAM permissions for DynamoDB
-├── scripts/
-│   └── exploit_payload.json         # Sample JSON payload for Burp Suite Repeater
-├── screenshots/                     # Proof of exploit and successful verification
-└── README.md                        # Project documentation (this file)
-```
-
----
 
 ## 1. Setup & Deployment
 To deploy the DVSA environment for testing, follow these steps:
