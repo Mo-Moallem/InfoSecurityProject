@@ -1,32 +1,5 @@
 # Security Analysis: Denial of Service (DoS) in DVSA
 
-## Project Overview
-**Course:** ICS-344: Information Security  
-**Institution:** King Fahd University of Petroleum and Minerals (KFUPM)  
-**Target Application:** Damn Vulnerable Serverless Application (DVSA)  
-**Vulnerability Focus:** Lesson 6 - Denial of Service (DoS) targeting the Billing API.
-
-This repository documents the identification, exploitation, and remediation of a Denial of Service (DoS) vulnerability within a serverless architecture. The attack targets the `DVSA-PAYMENT-PROCESSOR` Lambda function, exploiting synchronous delays to exhaust account-wide concurrency limits.
-
----
-
-## Repository Structure
-To maintain a clean environment, the repository is organized as follows:
-
-```text
-├── assets/
-│   ├── screenshots/       # Visual evidence of exploit and verification
-│   └── videos/            # Walkthrough videos for exploitation and patching
-├── scripts/
-│   ├── DOS.py             # Multithreaded Python exploit script
-│   └── setup_env.sh       # Helper script for environment variables
-├── src/
-│   ├── payment_original.py # Vulnerable Lambda code
-│   └── payment_patched.py  # Remediated Lambda code
-└── README.md              # Project documentation
-```
-
----
 
 ## 1. Setup & Deployment
 To replicate this environment, you must deploy the DVSA suite on AWS.
@@ -145,4 +118,3 @@ def handle_payment(event, context):
 * **WAF Integration:** Deploy **AWS WAF** (Web Application Firewall) to detect and block volumetric DoS patterns before they reach your compute layer.
 
 ---
-> **Disclaimer:** This documentation is for educational purposes only as part of the KFUPM ICS-344 curriculum. Never perform security testing on systems you do own or have explicit permission to test.
