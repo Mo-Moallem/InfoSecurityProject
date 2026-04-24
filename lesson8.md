@@ -87,4 +87,3 @@ except botocore.exceptions.ClientError as e:
 * **Fail Securely:** Ensure that if a condition fails, the system returns a clear error and does not proceed with the restricted operation.
 
 ---
-> **Note:** This analysis was performed in a controlled environment for educational purposes. No real secrets or AWS keys were exposed during this documentation process.
