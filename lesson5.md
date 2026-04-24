@@ -2,31 +2,6 @@
 
 This repository contains a comprehensive security analysis and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically focusing on **Lesson 5: Broken Access Control**.
 
-This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
-
----
-
-## ## Project Overview
-Broken Access Control occurs when a server fails to verify if a user has the appropriate permissions to perform an action or access data. In this lesson, we exploit the backend function `DVSA-ADMIN-UPDATE-ORDERS`. By bypassing standard authorization, an unprivileged user can manually set their order status to "paid" without actually completing a payment.
-
----
-
-## ## Repository Structure
-To maintain a clean and replicable environment, the repository is organized as follows:
-
-```text
-├── README.md               # Main documentation
-├── src/
-│   ├── vulnerable/         # Original vulnerable Lambda code
-│   └── patched/            # Remediated code with authorization checks
-├── scripts/
-│   ├── exploit.sh          # Shell script containing the curl commands
-│   └── payloads/           # JSON payloads for testing
-└── evidence/               # Screenshots of the exploit and fix
-    ├── exploit_success.png
-    └── patch_verification.png
-```
-
 ---
 
 ## ## Setup & Deployment
@@ -114,7 +89,3 @@ def update_item(order_id, user, obj, ts, is_admin):
 * **Avoid Sensitive Data in Payloads:** Don't let users submit fields like `status` or `is_admin` in requests that modify their own profiles or orders.
 
 ---
-
-**Note:** Always ensure that `<YOUR_TOKEN>` and `<YOUR_ORDER_ID>` are replaced with actual values during testing. **Never hardcode secrets or real AWS keys in your repository.**
-
-How do you plan to structure the `src/` directory—would you like to separate the original and patched code into different folders, or use branching in Git?
