@@ -1,31 +1,11 @@
 # DVSA Security Analysis: Remote Code Execution (RCE) via Unrestricted File Upload
 
-This repository contains a professional security analysis, exploit demonstration, and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically targeting **Lesson 4: Insecure Cloud Configuration**.
-
-This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
+**Lesson 4: Insecure Cloud Configuration**.
 
 ---
 
 ## ## Project Overview
 In serverless environments, misconfigured S3 buckets combined with a lack of input validation in Lambda functions can lead to **Remote Code Execution (RCE)**. This analysis demonstrates how an attacker can upload a malicious script disguised as an image to exfiltrate sensitive environment variables and AWS IAM credentials.
-
----
-
-## ## Repository Structure
-The repository is organized as follows to ensure replicability:
-
-```text
-├── README.md               # Project documentation
-├── backend_code/
-│   ├── vulnerable_lambda.py # Original code with commented-out validation
-│   └── patched_lambda.py    # Remediation with active is_safe() check
-├── exploit/
-│   ├── cat.png.python3      # Malicious Python payload
-│   └── decoder_recipe.json  # CyberChef recipe for exfiltrated data
-└── screenshots/
-    ├── rce_evidence.png     # Netcat listener receiving base64 data
-    └── blocked_attack.png   # Ngrok logs showing no traffic after patch
-```
 
 ---
 
