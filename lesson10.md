@@ -1,117 +1,136 @@
-This `README.md` is designed to be a definitive, step-by-step guide for a beginner to replicate your work on **Lesson #10: Unhandled Exceptions**. [cite_start]It follows the specific repository requirements for the **ICS-344** course at **KFUPM**[cite: 4, 140].
+# DVSA Security Analysis: Information Disclosure via Unhandled Exceptions
+
+This repository contains a comprehensive security analysis and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically focusing on **Lesson 10: Unhandled Exceptions**. 
+
+This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
 
 ---
 
-# 🛡️ DVSA Vulnerability Analysis: Unhandled Exceptions
-## Project: OWASP Damn Vulnerable Serverless Application (DVSA)
-[cite_start]**Course:** ICS-344: Information Security [cite: 1]  
-[cite_start]**Institution:** King Fahd University of Petroleum and Minerals (KFUPM) [cite: 4]
+## ## Project Overview
+In a serverless architecture, failing to handle errors properly can lead to **Information Disclosure**. This occurs when the backend (AWS Lambda) encounters an unexpected state and returns raw diagnostic data—such as stack traces and file paths—to the end user via the API Gateway.
 
 ---
 
-## 📂 Repository Organization
-[cite_start]This repository is organized to allow for easy replication of the security audit[cite: 474, 475]:
-* **`/remediation`**: Contains the patched `index.js` for the Lambda function.
-* **`/evidence/exploit`**: Screenshots showing the leaked stack traces and file paths.
-* **`/evidence/verification`**: Screenshots showing the sanitized backend responses after the fix.
-* **`/payloads`**: Sample JSON payloads used to trigger the vulnerability.
+## ## Repository Structure
+A clean organization is maintained to ensure all artifacts are easily accessible:
 
----
-
-## 🛠️ Prerequisites & Setup
-Before starting, ensure you have the following tools and environment ready:
-1.  [cite_start]**AWS Account**: A non-production account where DVSA is deployed[cite: 20].
-2.  **Burp Suite**: Community or Professional edition for intercepting and modifying HTTP traffic.
-3.  [cite_start]**DVSA Deployment**: Ensure the stack is deployed and you have the URL of your S3-hosted frontend[cite: 15, 50].
-
----
-
-## 🔍 Part 1: Finding the Vulnerability (The Exploit)
-[cite_start]The goal of this phase is to demonstrate how malformed requests can cause the backend to leak internal system details[cite: 344].
-
-### **Step 1: Intercept Legitimate Traffic**
-1.  Open your DVSA website and navigate to the **"My Orders"** page.
-2.  Open **Burp Suite** and ensure "Intercept is ON" in the Proxy tab.
-3.  Refresh the "My Orders" page. Burp will catch the `POST` request sent to the API Gateway.
-
-### **Step 2: Send to Repeater**
-1.  Right-click the intercepted request in Burp and select **"Send to Repeater"**.
-2.  Go to the **Repeater** tab to manually modify the JSON payload.
-
-### **Step 3: Trigger the Exception**
-1.  Locate the JSON body in the request. It should look like this:
-    ```json
-    { "action": "orders" }
-    ```
-2.  Change the value of `"action"` to something the backend does not expect, such as `"get"`.
-3.  Click **Send**.
-
-### **Step 4: Analyze the Data Leak**
-* [cite_start]**The Vulnerability**: The server returns a `500 Internal Server Error` containing a massive `errorStack`[cite: 345].
-* [cite_start]**What is Leaked?**: You will see internal file paths (e.g., `/var/task/get_order.py`), specific line numbers, and the logic sequence of the Lambda function[cite: 345]. [cite_start]This information helps an attacker understand the backend architecture for more advanced attacks[cite: 79, 345].
-
----
-
-## 🛡️ Part 2: Patching the Vulnerability (The Remediation)
-[cite_start]The goal is to implement centralized error handling to ensure the backend only returns "client-safe" messages[cite: 346].
-
-### **Step 1: Open the AWS Lambda Console**
-1.  Log in to the **AWS Management Console**.
-2.  Navigate to **Lambda** > **Functions**.
-3.  Find and click on the function named `DVSA-ORDER-MANAGER`.
-
-### **Step 2: Implement the Try-Catch Block**
-1.  In the **Code** tab, locate the main handler function.
-2.  Wrap the entire logic inside a `try...catch` block.
-3.  [cite_start]Modify the `catch` block to log the error to **CloudWatch** (for your eyes only) and return a generic response to the user[cite: 346].
-
-**Original (Vulnerable) Logic:**
-```javascript
-exports.handler = async (event) => {
-    // Logic here crashes when action is "get" and returns a raw stack trace
-    let result = await processAction(event.action);
-    return result;
-};
+```text
+├── README.md               # Detailed project documentation and guides
+├── code/
+│   ├── original/           # Vulnerable version of the Lambda function
+│   └── patched/            # Remediated version of the Lambda function
+├── scripts/
+│   └── exploit_payload.json # JSON payload used to trigger the exception
+└── screenshots/            # Visual evidence of exploit and verification
+    ├── exploit_result.png   # Screenshot showing the leaked stack trace
+    └── verification.png     # Screenshot showing the generic error message
 ```
 
-**Patched (Secure) Logic:**
-```javascript
-exports.handler = async (event) => {
-    try {
-        let result = await processAction(event.action);
-        return result;
-    } catch (error) {
-        [cite_start]// 1. Log the real error to CloudWatch for debugging [cite: 116]
-        console.error("Internal Error Details:", error);
+---
 
-        [cite_start]// 2. Return a sanitized, generic error to the client [cite: 346]
-        return {
-            statusCode: 400,
-            body: JSON.stringify({
-                "status": "err",
-                "message": "Invalid request or missing parameters."
-            })
-        };
-    }
-};
+## ## Setup & Deployment
+To replicate this environment, follow these steps to deploy the DVSA infrastructure:
+
+1. **Prerequisites:** An active AWS Account and the [DVSA Source Code](https://github.com/m6000/dvsa).
+2. **Deployment:**
+   * Log in to the **AWS Management Console**.
+   * Deploy the stack using the provided CloudFormation template or the Serverless Framework (`sls deploy`).
+   * Ensure the **DVSA-ORDER-MANAGER** and **DVSA-ORDER-GET** Lambda functions are active.
+3. **Access:** Open the DVSA frontend URL provided in the stack outputs.
+
+---
+
+## ## Vulnerability Discovery & Replication
+This section describes how to trigger the **Information Disclosure** vulnerability.
+
+### 1. Intercepting the Request
+* Open **Burp Suite** and enable the Intercept feature.
+* On the DVSA "My Orders" page, perform a standard action (like refreshing orders).
+* Intercept the `POST` request sent to the `/orders` endpoint.
+
+### 2. Manipulating the Payload
+* Send the intercepted request to **Burp Repeater** (Ctrl+R).
+* Modify the JSON body to provide an incomplete request. We will provide a valid action (`get`) but omit the required `order-id`.
+
+**Malformed Payload:**
+```json
+{
+  "action": "get"
+}
 ```
 
-### **Step 3: Deploy and Save**
-1.  Click the **Deploy** button to update the function in the AWS Cloud.
+### 3. Execution & Result
+* Click **Send** in Burp Suite.
+* **Observe the Response:** The server returns a `500 Internal Server Error` or a `200 OK` containing a raw Python `KeyError`.
+
+> **Vulnerability Evidence:** The response includes a `stackTrace` leaking internal paths like `/var/task/get_order.py` and specific code logic fragments.
+
 
 ---
 
-## ✅ Part 3: Verification After Fix
-[cite_start]To ensure the fix works and didn't break the app[cite: 416]:
+## ## Remediation & Patching
+The goal is to implement **Input Validation** at the entry point (Order Manager) to prevent downstream crashes.
 
-1.  **Repeat the Exploit**: Go back to **Burp Suite Repeater** and send the malformed `"action": "get"` request again.
-2.  [cite_start]**Observe the Change**: You should now receive a clean, short JSON error message without any stack traces or file paths[cite: 419].
-3.  **Confirm Legitimate Use**: Change the action back to `"orders"` and click Send. [cite_start]The application should still return your order history correctly[cite: 418].
+### 1. Modifying the Lambda Function
+Navigate to the **AWS Lambda Console**, select the **DVSA-ORDER-MANAGER** function, and update the `order_manager.js` file.
+
+#### Step A: Add a Validation Helper
+Add this function at the top of your script to check for required fields:
+
+```javascript
+function requireFields(obj, fields) { 
+   const missing = []; 
+   for (const field of fields) { 
+       const value = obj[field]; 
+       if (value === undefined || value === null || value === "") { 
+           missing.push(field); 
+       } 
+   } 
+   return missing; 
+}
+```
+
+#### Step B: Apply Validation to the 'Get' Case
+Update the switch statement to verify input before routing the request:
+
+```javascript
+case "get": { 
+   const missing = requireFields(req, ["order-id"]); 
+   if (missing.length > 0) { 
+       // Return a clean, generic error instead of crashing
+       return callback(null, badRequest("Missing required field(s)", missing)); 
+   } 
+   payload = { 
+       user: user, 
+       orderId: req["order-id"], 
+       isAdmin: isAdmin 
+   }; 
+   functionName = "DVSA-ORDER-GET"; 
+   break; 
+}
+```
+
+### 2. Deployment
+Click **Deploy** in the Lambda console to apply the changes.
 
 ---
 
-## 📌 Key Security Takeaway
-[cite_start]In a serverless environment, **Observability** should be handled internally via tools like **Amazon CloudWatch**, while external users should never see backend crashes[cite: 116, 346]. [cite_start]This follows the principle of **Defense in Depth**[cite: 16].
+## ## Post-Fix Verification
+To ensure the patch is effective, re-run the exploit attempt:
+
+1. Go back to **Burp Suite Repeater**.
+2. Resend the malformed payload: `{"action": "get"}`.
+3. **Observe the New Response:**
+   * **Status:** `err`
+   * **Message:** `Missing required field(s)`
+   * **Details:** `["order-id"]`
+
+The system now fails gracefully. No internal file paths or stack traces are disclosed to the user.
+
 
 ---
-*Note: This documentation is part of an academic project. [cite_start]Do not use these techniques on systems you do not own[cite: 131].*
+
+## ## Security Best Practices
+* **Centralized Error Handling:** Always use `try-catch` blocks to capture unexpected errors and return generic messages.
+* **Input Validation:** Never trust client-side data. Validate all required fields at the API boundary.
+* **Least Privilege:** Ensure Lambda execution roles only have access to the specific resources they need to minimize the impact of a potential leak.
