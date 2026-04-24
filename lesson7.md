@@ -1,31 +1,5 @@
 # Security Analysis: Over-Privileged Function (IAM) in DVSA
 
-## Project Overview
-**Course:** ICS-344: Information Security  
-**Institution:** King Fahd University of Petroleum and Minerals (KFUPM)  
-**Target Application:** Damn Vulnerable Serverless Application (DVSA)  
-**Vulnerability Focus:** Lesson #7 - Over-Privileged Lambda Functions.
-
-This repository documents the identification and remediation of an IAM (Identity and Access Management) misconfiguration in the DVSA environment. Specifically, it demonstrates how a compromised Lambda function with excessive permissions can be leveraged by an attacker to exfiltrate data from unrelated services like Amazon Cognito and S3.
-
----
-
-## Repository Structure
-The project is organized to ensure clear separation between vulnerable configurations, exploit scripts, and remediated policies:
-
-```text
-├── src/
-│   ├── vulnerable_iam_policy.json   # Original broad IAM policy
-│   └── patched_iam_policy.json      # Restricted least-privilege policy
-├── scripts/
-│   ├── extract_credentials.sh       # Script to automate STS token harvest
-│   └── exploit_aws_cli.sh           # Script demonstrating cross-service access
-├── assets/
-│   ├── screenshots/                 # Evidence of exploitation and verification
-│   └── videos/                      # Step-by-step walkthroughs
-└── README.md                        # Documentation
-```
-
 ---
 
 ## 1. Setup & Deployment
