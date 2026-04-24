@@ -1,71 +1,88 @@
-This guide outlines the process of exploiting **Broken Authentication** within the Damn Vulnerable Serverless Application (DVSA). We'll manipulate a JSON Web Token (JWT) to perform an **Insecure Direct Object Reference (IDOR)** attack, allowing us to view orders belonging to another user.
+# Security Analysis: Broken Authentication in DVSA
 
 ---
 
-## 🛠️ Prerequisites
+## 1. Setup & Deployment
+To replicate this analysis, you must deploy the DVSA environment on AWS.
 
-Before starting, ensure you have the following tools ready:
-* **Burp Suite:** For intercepting and repeating HTTP requests.
-* **CyberChef:** To handle Base64 decoding and encoding.
-* **JWT.io:** To inspect and debug the token structure.
-* **DVSA Instance:** Access to the vulnerable web application.
+1.  **Deployment:** Use the AWS CloudFormation or SAM templates provided in the DVSA repository to provision the infrastructure (API Gateway, Lambda, Cognito).
+2.  **AWS Console:** Navigate to the **AWS Lambda** service and locate the `DVSA-ORDER-MANAGER` function.
+3.  **Frontend Access:** Open the DVSA frontend URL and create at least two user accounts (Attacker and Victim) to verify cross-user data access.
 
 ---
 
-## 🔓 Step-by-Step Reproduction
+## 2. Vulnerability Replication (Discovery)
+### The Root Cause
+The vulnerability exists because the backend blindly trusts the identity claims (`sub` and `username`) found in the JWT payload without verifying the cryptographic signature. An attacker can decode the token, change the user identity, and re-encode it to impersonate any user.
 
-### 1. Capture the Valid Token
-First, we need a legitimate session to work with. Log in to the application as **User B** (the attacker).
+### Step-by-Step Exploitation (Video 1)
+1.  **Capture Legitimate Token:**
+    * Log into the DVSA application as the "Attacker" user.
+    * Open **Burp Suite** and ensure the Proxy Intercept is **ON**.
+    * Navigate to "My Orders" to trigger a `POST` request to the `/order` endpoint.
+    * In Burp Suite, locate the `Authorization: Bearer <TOKEN>` header.
 
-1.  Open your browser's **DevTools** (F12) and navigate to the **Application** tab.
-2.  In the left sidebar, look under **Local Storage** or **Cookies**. Alternatively, use **Burp Suite** to intercept a request.
-3.  Locate the `Authorization` header or a stored token. This is typically a long string of characters (the JWT).
+2.  **Decode the JWT:**
+    * Copy the JWT and paste it into [jwt.io](https://jwt.io) or **CyberChef** (using "JWT Decode").
+    * Identify the `payload` section containing the `sub` (UUID) and `username`.
 
-### 2. Identify the Target
-To impersonate another user, you need their unique identifier (`sub`). 
+3.  **Forge the Identity:**
+    * Replace the `sub` and `username` values with the details of the "Victim" user.
+    * *Note: Since the signature is not checked, you do not need to provide a valid secret key.*
 
-> [!TIP]
-> In a real-world scenario, you might find these IDs through public profiles, URL parameters, or administrative leaks. In this environment, you can find the target's `sub` (User ID) via the AWS CloudFormation outputs or the user management dashboard.
+4.  **Inject and Send:**
+    * Re-encode the modified payload (Base64URL) and replace the original token in the Burp Suite request.
+    * Send the request via **Burp Repeater**.
 
-* **Target User (User C) ID:** `4b803468-b881-707a-f8f4-debd1534a78c` (example from video).
+5.  **Observe the Result:**
+    * The server responds with `200 OK`, returning the full order history (Order IDs, totals, and dates) belonging to the victim.
 
-### 3. Decode and Forge the Token
-Now, we will modify our own token to point to the target user.
+> **[Insert Screenshot of Burp Suite showing unauthorized data retrieval]**
 
-1.  **Decode:** Copy your token into **CyberChef**. Use the `JWT Decode` or `From Base64` recipes.
-2.  **Edit Payload:** Locate the JSON payload. You will see fields like `sub` and `username`.
-3.  **Modify:** Replace your `sub` and `username` with the values for **User C**.
-4.  **Re-encode:** Use the `To Base64` recipe in CyberChef to convert the modified JSON back into a string.
+---
 
+## 3. Remediation & Patching
+### The Fix Strategy: Cryptographic Verification
+To secure the application, we implement a strict verification process. The Lambda function will now fetch the **JSON Web Key Set (JWKS)** from Amazon Cognito's public endpoint and use it to verify the JWT signature before trusting any claims.
 
-```json
-// Original Payload Snippet
-{
-  "sub": "your-uuid-here",
-  "username": "User_B",
-  ...
-}
+### Technical Implementation (Video 2)
+1.  **Access Lambda Console:** Locate the `DVSA-ORDER-MANAGER` function.
+2.  **Modify Source Code:** Open `order-manager.js` and replace the insecure decoding logic.
 
-// Forged Payload Snippet
-{
-  "sub": "4b803468-b881-707a-f8f4-debd1534a78c",
-  "username": "User_C",
-  ...
-}
+#### Crucial Code Changes:
+**Vulnerable Code (REMOVED):**
+```javascript
+// Insecure: Directly decoding without signature check
+var auth_header = headers.Authorization || headers.authorization;
+var token_sections = auth_header.split('.');
+var auth_data = jose.util.base64url.decode(token_sections[1]);
+var token = JSON.parse(auth_data);
+var user = token.username;
 ```
 
-### 4. Execute the Attack
-We will now use the forged token to request sensitive data.
+**Remediated Code (ADDED):**
+```javascript
+// Secure: Cryptographic verification using public keys
+const claims = await verifyCognitoJwt(rawToken); // Custom function to verify signature
+const user = claims["cognito:username"] || claims["username"];
+```
 
-1.  In **Burp Suite**, go to the **Proxy** tab and ensure **Intercept is ON**.
-2.  In the DVSA web app, click on the **Orders** section.
-3.  Intercept the `POST` or `GET` request to `/orders`.
-4.  Right-click the request and select **Send to Repeater**.
-5.  In the **Repeater** tab, replace the original `Authorization` token with your **forged token**.
-6.  Click **Send**.
+3.  **Deploy Changes:** Click the **Deploy** button in the AWS Lambda editor to apply the patch.
 
-### 5. Verify the Vulnerability
-Observe the **Response** pane in Burp Suite.
+---
 
-* **Success:** If the response contains order details (Order ID, Date, Total) for User C, the vulnerability is confirmed.
-* **The Flaw:** The server is trusting the `sub` and `username` claims provided by the client without properly verifying the JWT signature against a secret key.
+## 4. Verification After Fix
+1.  **Re-run the Exploit:** Attempt to send the forged token again using Burp Suite Repeater.
+2.  **Observe Failure:** The API now returns an **HTTP 400 Bad Request** with a `NotAuthorizedException` error: `"Could not verify signature for token"`.
+3.  **Check Legitimate Access:** Use a valid, unmodified token for the logged-in user. The system should still return their own order history correctly, proving that integrity and authentication are now enforced.
+
+> **[Insert Screenshot of HTTP 400 error after patch]**
+
+---
+
+## Security Best Practices
+* **Never Trust Client Data:** Treat all parts of a JWT (Header, Payload, and Signature) as untrusted until verified.
+* **Use SDKs:** Always use official AWS SDKs or well-maintained cryptographic libraries (like `aws-jwt-verify`) to handle token validation.
+* **Enforce Signature Verification:** Ensure the `alg` (algorithm) header in the JWT is validated against an allowlist (e.g., `RS256`) to prevent "None" algorithm attacks.
+
+---
