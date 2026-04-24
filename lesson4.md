@@ -2,12 +2,6 @@
 
 **Lesson 4: Insecure Cloud Configuration**.
 
----
-
-## ## Project Overview
-In serverless environments, misconfigured S3 buckets combined with a lack of input validation in Lambda functions can lead to **Remote Code Execution (RCE)**. This analysis demonstrates how an attacker can upload a malicious script disguised as an image to exfiltrate sensitive environment variables and AWS IAM credentials.
-
----
 
 ## ## Setup & Deployment
 To deploy the DVSA environment for testing:
