@@ -1,30 +1,10 @@
 # Security Analysis: Vulnerable Dependencies (RCE) in DVSA
 
-## Project Overview
-**Course:** ICS-344: Information Security  
-**Institution:** King Fahd University of Petroleum and Minerals (KFUPM)  
-**Target Application:** Damn Vulnerable Serverless Application (DVSA)  
-**Vulnerability Focus:** Lesson 9 - Vulnerable Dependencies leading to Remote Code Execution (RCE).
 
 This repository documents the identification, exploitation, and remediation of a critical vulnerability within the `DVSA-ORDER-MANAGER` Lambda function. The application relies on outdated third-party libraries (`node-serialize` and `node-jose`) that allow an attacker to execute arbitrary code within the serverless runtime.
 
 ---
 
-## Repository Structure
-To maintain a professional and replicable project, the repository is organized as follows:
-
-```text
-├── assets/
-│   └── screenshots/       # Screenshots of vulnerable code and successful patches
-├── scripts/
-│   └── rce_payload.js     # Malicious payload used to trigger RCE
-├── src/
-│   ├── order-manager.js   # Patched Lambda function source code
-│   └── package.json       # Updated dependency manifest
-└── README.md              # Project documentation
-```
-
----
 
 ## 1. Setup & Deployment
 Before replicating the vulnerability, ensure the DVSA environment is deployed on AWS.
@@ -108,4 +88,3 @@ const req = typeof event.body === "string" ? JSON.parse(event.body) : (event.bod
 * **Strict Input Validation:** Never treat untrusted user input as executable logic. Always validate and sanitize input at the boundary of your application.
 
 ---
-> **Disclaimer:** This analysis is intended for educational purposes as part of the KFUPM ICS-344 course. Unauthorized access to or testing of systems you do not own is illegal.
