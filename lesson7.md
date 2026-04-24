@@ -94,4 +94,3 @@ To mitigate this, we replace the broad AWS Managed policies with a **Customer Ma
 * **Service Control Policies (SCPs):** Use SCPs at the AWS Organization level to provide guardrails that prevent roles from ever gaining administrative access in production environments.
 
 ---
-> **Disclaimer:** This analysis is part of a university project at KFUPM. It is conducted in a sandboxed environment. Do not use these techniques on systems you do not own.
