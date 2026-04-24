@@ -2,29 +2,6 @@
 
 This repository contains a comprehensive security analysis and remediation guide for the **Damn Vulnerable Serverless Application (DVSA)**, specifically focusing on **Lesson 10: Unhandled Exceptions**. 
 
-This project was developed for **ICS-344: Information Security** at **King Fahd University of Petroleum and Minerals (KFUPM)**.
-
----
-
-## ## Project Overview
-In a serverless architecture, failing to handle errors properly can lead to **Information Disclosure**. This occurs when the backend (AWS Lambda) encounters an unexpected state and returns raw diagnostic data—such as stack traces and file paths—to the end user via the API Gateway.
-
----
-
-## ## Repository Structure
-A clean organization is maintained to ensure all artifacts are easily accessible:
-
-```text
-├── README.md               # Detailed project documentation and guides
-├── code/
-│   ├── original/           # Vulnerable version of the Lambda function
-│   └── patched/            # Remediated version of the Lambda function
-├── scripts/
-│   └── exploit_payload.json # JSON payload used to trigger the exception
-└── screenshots/            # Visual evidence of exploit and verification
-    ├── exploit_result.png   # Screenshot showing the leaked stack trace
-    └── verification.png     # Screenshot showing the generic error message
-```
 
 ---
 
